@@ -1,0 +1,102 @@
+FROM ubuntu:24.04 AS builder
+
+WORKDIR /build
+
+RUN apt-get -y update \
+    && apt-get -y install build-essential curl git unzip autoconf libtool \
+      golang-go go-md2man libseccomp-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /output/usr/bin \
+             /output/usr/share/containers
+
+COPY patches /build/patches
+
+# CRI-O
+ARG CRIO_VERSION=1.30.3
+RUN cd /build && git clone --depth 1 --branch "v$CRIO_VERSION" https://github.com/cri-o/cri-o.git \
+    && cd /build/cri-o \
+    && git apply /build/patches/crio-fix-rootless-cgroups.patch \
+    && CGO_ENABLED=1 go build \
+      -mod vendor -buildmode pie -v -ldflags "-s -w" \
+      -tags "netgo osusergo exclude_graphdriver_devicemapper exclude_graphdriver_btrfs containers_image_openpgp seccomp" \
+      -o ./bin/crio ./cmd/crio \
+    && make bin/pinns \
+    && cp bin/crio bin/pinns /output/usr/bin/ \
+    && cd /build && rm -rf /build/cri-o
+
+# containers-common / containers-storage
+ARG CONTAINERS_COMMON_VERSION=0.59.2
+ARG CONTAINERS_STORAGE_VERSION=1.54.0
+RUN curl -L https://raw.githubusercontent.com/containers/common/v$CONTAINERS_COMMON_VERSION/pkg/config/containers.conf -o /output/usr/share/containers/containers.conf \
+    && curl -L https://raw.githubusercontent.com/containers/common/v$CONTAINERS_COMMON_VERSION/pkg/seccomp/seccomp.json -o /output/usr/share/containers/seccomp.json \
+    && curl -L https://raw.githubusercontent.com/containers/storage/v$CONTAINERS_STORAGE_VERSION/storage.conf -o /output/usr/share/containers/storage.conf
+
+# Catatonit
+ARG CATATONIT_VERSION=0.2.0
+RUN cd /build && curl -LO https://github.com/openSUSE/catatonit/releases/download/v$CATATONIT_VERSION/catatonit.tar.xz \
+    && tar xf catatonit.tar.xz \
+    && cd catatonit-* \
+    && ./autogen.sh && ./configure && make \
+    && cp catatonit /output/usr/bin/ \
+    && cd /build && rm -rf /build/catatonit-* && rm /build/catatonit.tar.xz
+
+FROM ubuntu:24.04
+
+RUN apt-get update \
+    && apt-get -y install libcap2 libyajl2 iptables nftables curl \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG TARGETARCH
+ARG K3S_VERSION=1.30.2+k3s1
+RUN k3s_suffix="-$TARGETARCH" \
+    && if [ "$TARGETARCH" = "amd64" ]; then k3s_suffix=""; fi \
+    && curl -L https://github.com/k3s-io/k3s/releases/download/v$K3S_VERSION/k3s$k3s_suffix -o k3s \
+    && mv k3s /usr/bin/k3s \
+    && chmod +x /usr/bin/k3s
+
+ARG CRUN_VERSION=1.15
+RUN curl -L https://github.com/containers/crun/releases/download/$CRUN_VERSION/crun-$CRUN_VERSION-linux-$TARGETARCH-disable-systemd -o crun \
+    && mv crun /usr/bin/crun \
+    && chmod +x /usr/bin/crun
+
+ARG CONMON_VERSION=2.1.12
+RUN curl -L https://github.com/containers/conmon/releases/download/v$CONMON_VERSION/conmon.$TARGETARCH -o conmon \
+    && mv conmon /usr/bin/conmon \
+    && chmod +x /usr/bin/conmon
+
+ARG CNI_PLUGINS_VERSION=1.5.1
+RUN mkdir -p /opt/cni/bin && cd /opt/cni/bin \
+    && curl -L https://github.com/containernetworking/plugins/releases/download/v$CNI_PLUGINS_VERSION/cni-plugins-linux-$TARGETARCH-v$CNI_PLUGINS_VERSION.tgz -o cni.tgz \
+    && tar xf cni.tgz && rm cni.tgz
+
+RUN mkdir -p /etc/containers/containers.conf.d \
+    && mkdir -p /etc/containers/certs.d \
+    && mkdir -p /etc/containers/oci/hooks.d \
+    && mkdir -p /etc/containers/registries.conf.d \
+    && mkdir -p /etc/containers/registries.d \
+    && mkdir -p /lib/modules \
+    && mkdir -p /etc/cni/net.d \
+    && mkdir -p /opt/assets
+
+COPY --from=builder /output/usr/bin/* /usr/bin/
+COPY --from=builder /output/usr/share/containers /usr/share/containers
+
+COPY policy.json /etc/containers/policy.json
+COPY registries.conf /etc/containers/registries.conf
+
+COPY scripts/common/* /opt/assets/
+COPY scripts/k3s/* /opt/assets/
+COPY scripts/k3s-crio/* /opt/assets/
+RUN chmod +x /opt/assets/entrypoint.sh && chmod +x /opt/assets/startup.sh
+
+COPY manifests /opt/assets/manifests
+
+COPY crio.conf /etc/crio/crio.conf
+
+VOLUME /var/lib/containers
+
+EXPOSE 6443
+
+ENTRYPOINT ["catatonit", "--", "/opt/assets/entrypoint.sh"]
+CMD ["server"]

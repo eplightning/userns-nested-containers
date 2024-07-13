@@ -1,0 +1,132 @@
+FROM ubuntu:24.04 AS builder
+
+WORKDIR /build
+
+RUN apt-get -y update \
+    && apt-get -y install build-essential curl git unzip autoconf libtool \
+      golang-go go-md2man libseccomp-dev protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+RUN mkdir -p /output/usr/bin \
+             /output/usr/libexec/podman \
+             /output/usr/share/containers
+
+COPY patches /build/patches
+
+ARG SKOPEO_VERSION=1.15.2
+RUN cd /build && git clone --depth 1 --branch "v$SKOPEO_VERSION" https://github.com/containers/skopeo.git \
+    && cd /build/skopeo \
+    && CGO_ENABLED=1 go build \
+      -mod vendor -buildmode pie -v -ldflags "-s -w" \
+      -tags "netgo osusergo exclude_graphdriver_devicemapper exclude_graphdriver_btrfs containers_image_openpgp" \
+      -o ./bin/skopeo ./cmd/skopeo \
+    && cp bin/skopeo /output/usr/bin/ \
+    && cd /build && rm -rf /build/skopeo
+
+ARG PODMAN_VERSION=5.1.2
+RUN cd /build && git clone --depth 1 --branch "v$PODMAN_VERSION" https://github.com/containers/podman.git \
+    && cd /build/podman \
+    && CGO_ENABLED=1 go build \
+      -mod vendor -buildmode pie -v -ldflags "-s -w" \
+      -tags "netgo osusergo exclude_graphdriver_devicemapper exclude_graphdriver_btrfs containers_image_openpgp seccomp" \
+      -o ./bin/podman ./cmd/podman \
+    && CGO_ENABLED=1 go build \
+      -mod vendor -buildmode pie -v -ldflags "-s -w" \
+      -tags "netgo osusergo exclude_graphdriver_devicemapper exclude_graphdriver_btrfs containers_image_openpgp seccomp" \
+      -o ./bin/rootlessport ./cmd/rootlessport \
+    && cp bin/podman bin/rootlessport /output/usr/bin/ \
+    && cd /build && rm -rf /build/podman
+
+ARG BUILDAH_VERSION=1.36.0
+RUN cd /build && git clone --depth 1 --branch "v$BUILDAH_VERSION" https://github.com/containers/buildah.git \
+    && cd /build/buildah \
+    && CGO_ENABLED=1 go build \
+      -mod vendor -buildmode pie -v -ldflags "-s -w" \
+      -tags "netgo osusergo exclude_graphdriver_devicemapper exclude_graphdriver_btrfs containers_image_openpgp seccomp" \
+      -o ./bin/buildah ./cmd/buildah \
+    && cp bin/buildah /output/usr/bin/ \
+    && cd /build && rm -rf /build/buildah
+
+ARG CATATONIT_VERSION=0.2.0
+RUN cd /build && curl -LO https://github.com/openSUSE/catatonit/releases/download/v$CATATONIT_VERSION/catatonit.tar.xz \
+    && tar xf catatonit.tar.xz \
+    && cd catatonit-* \
+    && ./autogen.sh && ./configure && make \
+    && cp catatonit /output/usr/bin/ \
+    && cd /build && rm -rf /build/catatonit-* && rm /build/catatonit.tar.xz
+
+ARG NETAVARK_VERSION=1.11.0
+RUN cd /build && git clone --depth 1 --branch "v$NETAVARK_VERSION" https://github.com/containers/netavark.git \
+    && cd /build/netavark \
+    && cargo build --release \
+    && cp target/release/netavark /output/usr/libexec/podman/ \
+    && cd /build && rm -rf /build/netavark
+
+ARG AARDVARK_DNS_VERSION=1.11.0
+RUN cd /build && git clone --depth 1 --branch "v$AARDVARK_DNS_VERSION" https://github.com/containers/aardvark-dns.git \
+    && cd /build/aardvark-dns \
+    && cargo build --release \
+    && cp target/release/aardvark-dns /output/usr/libexec/podman/ \
+    && cd /build && rm -rf /build/aardvark-dns
+
+ARG PASTA_VERSION=2024_06_24.1ee2eca
+RUN cd /build && curl -LO https://passt.top/passt/snapshot/passt-$PASTA_VERSION.tar.gz \
+    && tar xf passt-*.tar.gz \
+    && cd passt-* \
+    && make static VERSION=$PASTA_VERSION \
+    && cp passt pasta qrap /output/usr/bin/ \
+    && if [ -e passt.avx2 ]; then cp passt.avx2 pasta.avx2 /output/usr/bin/; fi \
+    && cd /build && rm -rf /build/passt-*
+
+ARG CONTAINERS_COMMON_VERSION=0.59.2
+ARG CONTAINERS_STORAGE_VERSION=1.54.0
+RUN curl -L https://raw.githubusercontent.com/containers/common/v$CONTAINERS_COMMON_VERSION/pkg/config/containers.conf -o /output/usr/share/containers/containers.conf \
+    && curl -L https://raw.githubusercontent.com/containers/common/v$CONTAINERS_COMMON_VERSION/pkg/seccomp/seccomp.json -o /output/usr/share/containers/seccomp.json \
+    && curl -L https://raw.githubusercontent.com/containers/storage/v$CONTAINERS_STORAGE_VERSION/storage.conf -o /output/usr/share/containers/storage.conf
+
+FROM ubuntu:24.04
+
+RUN apt-get update \
+    && apt-get -y install libcap2 libyajl2 iptables nftables curl uidmap \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG TARGETARCH
+
+ARG CRUN_VERSION=1.15
+RUN curl -L https://github.com/containers/crun/releases/download/$CRUN_VERSION/crun-$CRUN_VERSION-linux-$TARGETARCH-disable-systemd -o crun \
+    && mv crun /usr/bin/crun \
+    && chmod +x /usr/bin/crun
+
+ARG CONMON_VERSION=2.1.12
+RUN curl -L https://github.com/containers/conmon/releases/download/v$CONMON_VERSION/conmon.$TARGETARCH -o conmon \
+    && mv conmon /usr/bin/conmon \
+    && chmod +x /usr/bin/conmon
+
+RUN mkdir -p /etc/containers/containers.conf.d \
+    && mkdir -p /etc/containers/certs.d \
+    && mkdir -p /etc/containers/oci/hooks.d \
+    && mkdir -p /etc/containers/registries.conf.d \
+    && mkdir -p /etc/containers/registries.d \
+    && mkdir -p /opt/assets \
+    && mkdir -p /var/run/podman \
+    && ln -s /usr/bin/podman /usr/bin/docker \
+    && ln -s /var/run/docker.sock /var/run/podman/podman.sock
+
+COPY --from=builder /output/usr/bin/* /usr/bin/
+COPY --from=builder /output/usr/libexec/podman /usr/libexec/podman
+COPY --from=builder /output/usr/share/containers /usr/share/containers
+
+COPY policy.json /etc/containers/policy.json
+COPY registries.conf /etc/containers/registries.conf
+
+COPY scripts/common/* /opt/assets/
+COPY scripts/podman/* /opt/assets/
+RUN chmod +x /opt/assets/entrypoint.sh && chmod +x /opt/assets/startup.sh
+
+VOLUME /var/lib/containers
+
+ENTRYPOINT ["catatonit", "--", "/opt/assets/entrypoint.sh"]
+CMD ["bash"]

@@ -1,0 +1,57 @@
+FROM ubuntu:24.04 AS builder
+
+WORKDIR /build
+
+RUN apt-get -y update \
+    && apt-get -y install build-essential curl git unzip autoconf libtool \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /output/usr/bin
+
+# Catatonit
+ARG CATATONIT_VERSION=0.2.0
+RUN cd /build && curl -LO https://github.com/openSUSE/catatonit/releases/download/v$CATATONIT_VERSION/catatonit.tar.xz \
+    && tar xf catatonit.tar.xz \
+    && cd catatonit-* \
+    && ./autogen.sh && ./configure && make \
+    && cp catatonit /output/usr/bin/ \
+    && cd /build && rm -rf /build/catatonit-* && rm /build/catatonit.tar.xz
+
+FROM ubuntu:24.04
+
+RUN apt-get update \
+    && apt-get -y install libcap2 libyajl2 iptables nftables curl \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG TARGETARCH
+ARG K3S_VERSION=1.30.2+k3s1
+RUN k3s_suffix="-$TARGETARCH" \
+    && if [ "$TARGETARCH" = "amd64" ]; then k3s_suffix=""; fi \
+    && curl -L https://github.com/k3s-io/k3s/releases/download/v$K3S_VERSION/k3s$k3s_suffix -o k3s \
+    && mv k3s /usr/bin/k3s \
+    && chmod +x /usr/bin/k3s
+
+ARG CNI_PLUGINS_VERSION=1.5.1
+RUN mkdir -p /opt/cni/bin && cd /opt/cni/bin \
+    && curl -L https://github.com/containernetworking/plugins/releases/download/v$CNI_PLUGINS_VERSION/cni-plugins-linux-$TARGETARCH-v$CNI_PLUGINS_VERSION.tgz -o cni.tgz \
+    && tar xf cni.tgz && rm cni.tgz
+
+RUN mkdir -p /lib/modules \
+    && mkdir -p /etc/cni/net.d \
+    && mkdir -p /opt/assets
+
+COPY --from=builder /output/usr/bin/* /usr/bin/
+
+COPY scripts/common/* /opt/assets/
+COPY scripts/k3s/* /opt/assets/
+COPY scripts/k3s-containerd/* /opt/assets/
+RUN chmod +x /opt/assets/entrypoint.sh && chmod +x /opt/assets/startup.sh
+
+COPY manifests /opt/assets/manifests
+
+VOLUME /var/lib/rancher
+
+EXPOSE 6443
+
+ENTRYPOINT ["catatonit", "--", "/opt/assets/entrypoint.sh"]
+CMD ["server"]

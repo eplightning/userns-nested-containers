@@ -1,0 +1,13 @@
+diff --git a/server/rootless_linux.go b/server/rootless_linux.go
+index 81c1aed..d53a5b9 100644
+--- a/server/rootless_linux.go
++++ b/server/rootless_linux.go
+@@ -82,8 +82,6 @@ func makeOCIConfigurationRootless(g *generate.Generator) {
+ 		}
+ 		g.AddMount(sysMnt)
+ 	}
+-
+-	g.SetLinuxCgroupsPath("")
+ }
+ 
+ // getAvailableV2Controllers returns the entries in /sys/fs/cgroup/<SELF>/cgroup.controllers
