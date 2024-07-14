@@ -7,7 +7,7 @@ set -e
 # - Ensure its mounted rw
 current_cgroup=$(cat /proc/self/cgroup | cut -d ":" -f 3)
 if [[ "$current_cgroup" == "/" ]]; then
-  if ! findmnt -rn -O rw /sys/fs/cgroup; then
+  if ! findmnt -rn -O rw /sys/fs/cgroup >/dev/null; then
     # Root cgroup but mounted ro: remount
     exec /opt/assets/remount-cgroups.sh /opt/assets/startup.sh "$@"
   else
