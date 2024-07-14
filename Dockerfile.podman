@@ -124,7 +124,7 @@ COPY registries.conf /etc/containers/registries.conf
 
 COPY scripts/common/* /opt/assets/
 COPY scripts/podman/* /opt/assets/
-RUN chmod +x /opt/assets/entrypoint.sh && chmod +x /opt/assets/startup.sh
+RUN chmod +x /opt/assets/entrypoint.sh && chmod +x /opt/assets/startup.sh && chmod +x /opt/assets/remount-cgroups.sh
 
 VOLUME /var/lib/containers
 

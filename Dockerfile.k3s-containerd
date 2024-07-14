@@ -8,7 +8,6 @@ RUN apt-get -y update \
 
 RUN mkdir -p /output/usr/bin
 
-# Catatonit
 ARG CATATONIT_VERSION=0.2.0
 RUN cd /build && curl -LO https://github.com/openSUSE/catatonit/releases/download/v$CATATONIT_VERSION/catatonit.tar.xz \
     && tar xf catatonit.tar.xz \
@@ -45,7 +44,7 @@ COPY --from=builder /output/usr/bin/* /usr/bin/
 COPY scripts/common/* /opt/assets/
 COPY scripts/k3s/* /opt/assets/
 COPY scripts/k3s-containerd/* /opt/assets/
-RUN chmod +x /opt/assets/entrypoint.sh && chmod +x /opt/assets/startup.sh
+RUN chmod +x /opt/assets/entrypoint.sh && chmod +x /opt/assets/startup.sh && chmod +x /opt/assets/remount-cgroups.sh
 
 COPY manifests /opt/assets/manifests
 

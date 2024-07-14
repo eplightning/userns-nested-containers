@@ -88,7 +88,7 @@ COPY registries.conf /etc/containers/registries.conf
 COPY scripts/common/* /opt/assets/
 COPY scripts/k3s/* /opt/assets/
 COPY scripts/k3s-crio/* /opt/assets/
-RUN chmod +x /opt/assets/entrypoint.sh && chmod +x /opt/assets/startup.sh
+RUN chmod +x /opt/assets/entrypoint.sh && chmod +x /opt/assets/startup.sh && chmod +x /opt/assets/remount-cgroups.sh
 
 COPY manifests /opt/assets/manifests
 
