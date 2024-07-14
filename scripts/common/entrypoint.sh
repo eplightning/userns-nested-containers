@@ -2,12 +2,19 @@
 
 set -e
 
+# Try our best to normalize cgroups:
+# - If we are sharing cgroup ns with the host, unshare
+# - Ensure its mounted rw
 current_cgroup=$(cat /proc/self/cgroup | cut -d ":" -f 3)
-
 if [[ "$current_cgroup" == "/" ]]; then
-  exec /opt/assets/startup.sh "$@"
+  if ! findmnt -rn -O rw /sys/fs/cgroup; then
+    # Root cgroup but mounted ro: remount
+    exec /opt/assets/remount-cgroups.sh /opt/assets/startup.sh "$@"
+  else
+    # Root cgroup and rw, all good
+    exec /opt/assets/startup.sh "$@"
+  fi
 else
-  # Privileged pods in Kubernetes share cgroup namespace with the host
-  # This is not something we want so we unshare it and then remount /sys/fs/cgroup
+  # Not a root group: unshare -> remount
   exec unshare -C /opt/assets/remount-cgroups.sh /opt/assets/startup.sh "$@"
 fi
