@@ -80,6 +80,12 @@ jobs:
         uses: docker/metadata-action@v3
         with:
           images: ${{ env.REGISTRY }}/${{ env.K3S_CRIO_IMAGE_NAME }}
+          tags: |
+            type=schedule
+            type=ref,event=branch
+            type=ref,event=tag
+            type=ref,event=pr
+            type=raw,v1.30
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v2
@@ -119,6 +125,12 @@ jobs:
         uses: docker/metadata-action@v3
         with:
           images: ${{ env.REGISTRY }}/${{ env.K3S_CONTAINERD_IMAGE_NAME }}
+          tags: |
+            type=schedule
+            type=ref,event=branch
+            type=ref,event=tag
+            type=ref,event=pr
+            type=raw,v1.30
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v2
