@@ -4,7 +4,8 @@ WORKDIR /build
 
 RUN apt-get -y update \
     && apt-get -y install build-essential curl git unzip autoconf libtool \
-      golang-go go-md2man libseccomp-dev \
+      golang-1.23 go-md2man libseccomp-dev \
+    && update-alternatives --install /usr/bin/go go /usr/lib/go-1.23/bin/go 20 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /output/usr/bin \
@@ -13,7 +14,7 @@ RUN mkdir -p /output/usr/bin \
 COPY patches /build/patches
 
 # CRI-O
-ARG CRIO_VERSION=1.30.3
+ARG CRIO_VERSION=1.32.1
 RUN cd /build && git clone --depth 1 --branch "v$CRIO_VERSION" https://github.com/cri-o/cri-o.git \
     && cd /build/cri-o \
     && git apply /build/patches/crio-fix-rootless-cgroups.patch \
@@ -26,14 +27,14 @@ RUN cd /build && git clone --depth 1 --branch "v$CRIO_VERSION" https://github.co
     && cd /build && rm -rf /build/cri-o
 
 # containers-common / containers-storage
-ARG CONTAINERS_COMMON_VERSION=0.59.2
-ARG CONTAINERS_STORAGE_VERSION=1.54.0
+ARG CONTAINERS_COMMON_VERSION=0.62.0
+ARG CONTAINERS_STORAGE_VERSION=1.57.1
 RUN curl -L https://raw.githubusercontent.com/containers/common/v$CONTAINERS_COMMON_VERSION/pkg/config/containers.conf -o /output/usr/share/containers/containers.conf \
     && curl -L https://raw.githubusercontent.com/containers/common/v$CONTAINERS_COMMON_VERSION/pkg/seccomp/seccomp.json -o /output/usr/share/containers/seccomp.json \
     && curl -L https://raw.githubusercontent.com/containers/storage/v$CONTAINERS_STORAGE_VERSION/storage.conf -o /output/usr/share/containers/storage.conf
 
 # Catatonit
-ARG CATATONIT_VERSION=0.2.0
+ARG CATATONIT_VERSION=0.2.1
 RUN cd /build && curl -LO https://github.com/openSUSE/catatonit/releases/download/v$CATATONIT_VERSION/catatonit.tar.xz \
     && tar xf catatonit.tar.xz \
     && cd catatonit-* \
@@ -48,14 +49,14 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 ARG TARGETARCH
-ARG K3S_VERSION=1.30.2+k3s1
+ARG K3S_VERSION=1.32.1+k3s1
 RUN k3s_suffix="-$TARGETARCH" \
     && if [ "$TARGETARCH" = "amd64" ]; then k3s_suffix=""; fi \
     && curl -L https://github.com/k3s-io/k3s/releases/download/v$K3S_VERSION/k3s$k3s_suffix -o k3s \
     && mv k3s /usr/bin/k3s \
     && chmod +x /usr/bin/k3s
 
-ARG CRUN_VERSION=1.15
+ARG CRUN_VERSION=1.20
 RUN curl -L https://github.com/containers/crun/releases/download/$CRUN_VERSION/crun-$CRUN_VERSION-linux-$TARGETARCH-disable-systemd -o crun \
     && mv crun /usr/bin/crun \
     && chmod +x /usr/bin/crun
@@ -65,7 +66,7 @@ RUN curl -L https://github.com/containers/conmon/releases/download/v$CONMON_VERS
     && mv conmon /usr/bin/conmon \
     && chmod +x /usr/bin/conmon
 
-ARG CNI_PLUGINS_VERSION=1.5.1
+ARG CNI_PLUGINS_VERSION=1.6.2
 RUN mkdir -p /opt/cni/bin && cd /opt/cni/bin \
     && curl -L https://github.com/containernetworking/plugins/releases/download/v$CNI_PLUGINS_VERSION/cni-plugins-linux-$TARGETARCH-v$CNI_PLUGINS_VERSION.tgz -o cni.tgz \
     && tar xf cni.tgz && rm cni.tgz

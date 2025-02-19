@@ -4,7 +4,8 @@ WORKDIR /build
 
 RUN apt-get -y update \
     && apt-get -y install build-essential curl git unzip autoconf libtool \
-      golang-go go-md2man libseccomp-dev protobuf-compiler \
+      golang-1.23 go-md2man libseccomp-dev protobuf-compiler \
+    && update-alternatives --install /usr/bin/go go /usr/lib/go-1.23/bin/go 20 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
@@ -16,7 +17,7 @@ RUN mkdir -p /output/usr/bin \
 
 COPY patches /build/patches
 
-ARG SKOPEO_VERSION=1.16.1
+ARG SKOPEO_VERSION=1.18.0
 RUN cd /build && git clone --depth 1 --branch "v$SKOPEO_VERSION" https://github.com/containers/skopeo.git \
     && cd /build/skopeo \
     && CGO_ENABLED=1 go build \
@@ -26,7 +27,7 @@ RUN cd /build && git clone --depth 1 --branch "v$SKOPEO_VERSION" https://github.
     && cp bin/skopeo /output/usr/bin/ \
     && cd /build && rm -rf /build/skopeo
 
-ARG PODMAN_VERSION=5.2.5
+ARG PODMAN_VERSION=5.4.0
 RUN cd /build && git clone --depth 1 --branch "v$PODMAN_VERSION" https://github.com/containers/podman.git \
     && cd /build/podman \
     && CGO_ENABLED=1 go build \
@@ -37,11 +38,11 @@ RUN cd /build && git clone --depth 1 --branch "v$PODMAN_VERSION" https://github.
       -mod vendor -buildmode pie -v -ldflags "-s -w" \
       -tags "netgo osusergo exclude_graphdriver_devicemapper exclude_graphdriver_btrfs containers_image_openpgp seccomp" \
       -o ./bin/rootlessport ./cmd/rootlessport \
-    && cp bin/podman /output/usr/bin/ && \
+    && cp bin/podman /output/usr/bin/ \
     && cp bin/rootlessport /output/usr/libexec/podman/ \
     && cd /build && rm -rf /build/podman
 
-ARG BUILDAH_VERSION=1.37.5
+ARG BUILDAH_VERSION=1.39.0
 RUN cd /build && git clone --depth 1 --branch "v$BUILDAH_VERSION" https://github.com/containers/buildah.git \
     && cd /build/buildah \
     && CGO_ENABLED=1 go build \
@@ -51,7 +52,7 @@ RUN cd /build && git clone --depth 1 --branch "v$BUILDAH_VERSION" https://github
     && cp bin/buildah /output/usr/bin/ \
     && cd /build && rm -rf /build/buildah
 
-ARG CATATONIT_VERSION=0.2.0
+ARG CATATONIT_VERSION=0.2.1
 RUN cd /build && curl -LO https://github.com/openSUSE/catatonit/releases/download/v$CATATONIT_VERSION/catatonit.tar.xz \
     && tar xf catatonit.tar.xz \
     && cd catatonit-* \
@@ -59,21 +60,21 @@ RUN cd /build && curl -LO https://github.com/openSUSE/catatonit/releases/downloa
     && cp catatonit /output/usr/bin/ \
     && cd /build && rm -rf /build/catatonit-* && rm /build/catatonit.tar.xz
 
-ARG NETAVARK_VERSION=1.13.0
+ARG NETAVARK_VERSION=1.14.0
 RUN cd /build && git clone --depth 1 --branch "v$NETAVARK_VERSION" https://github.com/containers/netavark.git \
     && cd /build/netavark \
     && cargo build --release \
     && cp target/release/netavark /output/usr/libexec/podman/ \
     && cd /build && rm -rf /build/netavark
 
-ARG AARDVARK_DNS_VERSION=1.13.0
+ARG AARDVARK_DNS_VERSION=1.14.0
 RUN cd /build && git clone --depth 1 --branch "v$AARDVARK_DNS_VERSION" https://github.com/containers/aardvark-dns.git \
     && cd /build/aardvark-dns \
     && cargo build --release \
     && cp target/release/aardvark-dns /output/usr/libexec/podman/ \
     && cd /build && rm -rf /build/aardvark-dns
 
-ARG PASTA_VERSION=2024_10_30.ee7d0b6
+ARG PASTA_VERSION=2025_02_17.a1e48a0
 RUN cd /build && curl -LO https://passt.top/passt/snapshot/passt-$PASTA_VERSION.tar.gz \
     && tar xf passt-*.tar.gz \
     && cd passt-* \
@@ -82,8 +83,8 @@ RUN cd /build && curl -LO https://passt.top/passt/snapshot/passt-$PASTA_VERSION.
     && if [ -e passt.avx2 ]; then cp passt.avx2 pasta.avx2 /output/usr/bin/; fi \
     && cd /build && rm -rf /build/passt-*
 
-ARG CONTAINERS_COMMON_VERSION=0.60.4
-ARG CONTAINERS_STORAGE_VERSION=1.55.1
+ARG CONTAINERS_COMMON_VERSION=0.62.0
+ARG CONTAINERS_STORAGE_VERSION=1.57.1
 RUN curl -L https://raw.githubusercontent.com/containers/common/v$CONTAINERS_COMMON_VERSION/pkg/config/containers.conf -o /output/usr/share/containers/containers.conf \
     && curl -L https://raw.githubusercontent.com/containers/common/v$CONTAINERS_COMMON_VERSION/pkg/seccomp/seccomp.json -o /output/usr/share/containers/seccomp.json \
     && curl -L https://raw.githubusercontent.com/containers/storage/v$CONTAINERS_STORAGE_VERSION/storage.conf -o /output/usr/share/containers/storage.conf
@@ -96,7 +97,7 @@ RUN apt-get update \
 
 ARG TARGETARCH
 
-ARG CRUN_VERSION=1.18.2
+ARG CRUN_VERSION=1.20
 RUN curl -L https://github.com/containers/crun/releases/download/$CRUN_VERSION/crun-$CRUN_VERSION-linux-$TARGETARCH-disable-systemd -o crun \
     && mv crun /usr/bin/crun \
     && chmod +x /usr/bin/crun

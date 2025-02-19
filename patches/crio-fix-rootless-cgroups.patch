@@ -10,4 +10,4 @@ index 81c1aed..d53a5b9 100644
 -	g.SetLinuxCgroupsPath("")
  }
  
- // getAvailableV2Controllers returns the entries in /sys/fs/cgroup/<SELF>/cgroup.controllers
+ // getAvailableV2Controllers returns the entries in /sys/fs/cgroup/<SELF>/cgroup.controllers.
