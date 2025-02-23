@@ -99,5 +99,7 @@ VOLUME /var/lib/containers
 
 EXPOSE 6443
 
+ENV _CONTAINERS_USERNS_CONFIGURED=done
+
 ENTRYPOINT ["catatonit", "--", "/opt/assets/entrypoint.sh"]
 CMD ["server"]
